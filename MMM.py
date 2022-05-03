@@ -1,18 +1,14 @@
 from pyexpat import model
 import pandas as pd
 import numpy as np
-from datetime import date
-import math
 
 from prophet import Prophet
-import holidays
 import theano
 import theano.tensor as tt
 import pymc3 as pm
 import arviz as az
 
 from scipy import optimize
-from sklearn.preprocessing import MinMaxScaler
 
 from plotnine import *
 from scipy.stats.mstats import mquantiles
@@ -31,10 +27,10 @@ class mmm:
     ----------
     """
 
-    def __init__(self, START_INDEX, END_INDEX):
+    def __init__(self):
         self.model = None
-        self.START_INDEX = START_INDEX
-        self.END_INDEX = END_INDEX
+        self.START_INDEX = None
+        self.END_INDEX = None
         self.trace = None
         self.trace_summary = None
         self.prophet = None
@@ -96,12 +92,14 @@ class mmm:
             
         return media_spend_exposure_df
 
-    def initialize(self, data, delay_channels, media_channels, control_variables, target_variable):
+    def initialize(self, data, delay_channels, media_channels, control_variables, target_variable, START_INDEX, END_INDEX):
 
         self.delay_channels = delay_channels
         self.control_variables = control_variables
         self.target_variable = target_variable
         self.media_channels = media_channels
+        self.START_INDEX = START_INDEX
+        self.END_INDEX = END_INDEX
 
         response_mean = []
         with pm.Model() as self.model:
@@ -131,7 +129,6 @@ class mmm:
                 response_mean.append(control_x)
                 
             intercept = pm.Normal("intercept", np.mean(data[target_variable].values), sd = 3)
-            #intercept = pm.HalfNormal("intercept", 0, sd = 3)
                 
             sigma = pm.HalfNormal("sigma", 4)
             
@@ -151,6 +148,19 @@ class mmm:
             self.trace_summary = az.summary(self.trace)
         return self.trace, self.trace_summary
 
+    def predict(self, data, START_INDEX, END_INDEX, return_metrics = True):
+        data["prediction"] = data[self.delay_channels + self.control_variables + ["intercept"]].sum(axis = 1)
+        y_pred = data["prediction"].values[START_INDEX:END_INDEX] * 100_000
+        
+        if return_metrics == True:
+            y_true = self.y_true[START_INDEX:END_INDEX]
+
+            print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred) ** 2))}")
+            print(f"MAPE: {np.mean(np.abs((y_true - y_pred) / y_true))}")
+            print(f"NRMSE: {self._nrmse(y_true, y_pred)}")
+        
+        return y_pred
+
     def plot_posterior_predictive(self):
         with self.model:
             self.ppc_all = pm.sample_posterior_predictive(self.trace, var_names = ["outcome"] + list(self.trace_summary.index))
@@ -164,12 +174,13 @@ class mmm:
             mean_variable = self.trace.posterior[variable].mean(axis = 0).mean().values
             self.trace_summary.loc[self.trace_summary.index == variable, "mean"] = mean_variable
 
-        self.y_true = data[self.target_variable].values[self.START_INDEX:self.END_INDEX]
+        self.y_true = data[self.target_variable].values
+        y_true = self.y_true[self.START_INDEX:self.END_INDEX]
         y_pred = self.ppc_all["outcome"].mean(axis = 0) * 100_000
 
-        print(f"RMSE: {np.sqrt(np.mean((self.y_true - y_pred)**2))}")
-        print(f"MAPE: {np.mean(np.abs((self.y_true - y_pred) / self.y_true))}")
-        print(f"NRMSE: {self._nrmse(self.y_true, y_pred)}")
+        print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred)**2))}")
+        print(f"MAPE: {np.mean(np.abs((y_true - y_pred) / y_true))}")
+        print(f"NRMSE: {self._nrmse(y_true, y_pred)}")
 
     def apply_transformations(self, data):
         adstock_params = self.trace_summary[self.trace_summary.index.str.contains("adstock")][["mean", "sd"]].reset_index().rename(columns = {'index': 'name'}).assign(name = lambda x: x["name"].str.replace("_adstock", ""))
@@ -211,17 +222,18 @@ class mmm:
     def plot_model_fit(self, data):
         data["prediction"] = data[self.delay_channels + self.control_variables + ["intercept"]].sum(axis = 1)
         y_pred_decomposed = data["prediction"].values[self.START_INDEX:self.END_INDEX] * 100_000
+        y_true = self.y_true[self.START_INDEX:self.END_INDEX]
 
-        print(f"RMSE: {np.sqrt(np.mean((self.y_true - y_pred_decomposed) ** 2))}")
-        print(f"MAPE: {np.mean(np.abs((self.y_true - y_pred_decomposed) / self.y_true))}")
-        print(f"NRMSE: {self._nrmse(self.y_true, y_pred_decomposed)}")
+        print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred_decomposed) ** 2))}")
+        print(f"MAPE: {np.mean(np.abs((y_true - y_pred_decomposed) / y_true))}")
+        print(f"NRMSE: {self._nrmse(y_true, y_pred_decomposed)}")
 
         qs = mquantiles(100_000 * (self.ppc_all["outcome"]), [0.025, 0.975], axis=0)
         qs_decomposed = mquantiles(100_000 * (self.ppc_all["outcome"]), [0.025, 0.975], axis=0)
         fig, ax = plt.subplots(figsize = (20, 8))
         _ = ax.plot((self.ppc_all["outcome"].mean(axis = 0) * 100_000), color = "green", label = "predicted posterior sampling")
         _ = ax.plot(y_pred_decomposed, color = "blue", label = "predicted decomposition")
-        _ = ax.plot(self.y_true, 'ro', label = "true")
+        _ = ax.plot(y_true, 'ro', label = "true")
         _ = ax.plot(qs[0], '--', color = "grey", label = "2.5%", alpha = 0.5)
         _ = ax.plot(qs[1], '--', color = "grey", label = "97.5%", alpha = 0.5)
         _ = ax.legend()
