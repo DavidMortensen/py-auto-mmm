@@ -142,9 +142,9 @@ class mmm:
         _ = ax.plot(prior_pred["outcome"].T, color = "0.5", alpha = 0.1)
         _ = ax.plot(data[self.target_variable].values[self.START_INDEX:self.END_INDEX], color = "red")
 
-    def fit(self):
+    def fit(self, draws, tune, chains, cores, target_accept = 0.95, ):
         with self.model:
-            self.trace = pm.sample(100, tune = 50, chains = 4, step = None, target_accept = 0.95, cores = 4, return_inferencedata = True)
+            self.trace = pm.sample(draws, tune = tune, chains = chains, step = None, target_accept = target_accept, cores = cores, return_inferencedata = True)
             self.trace_summary = az.summary(self.trace)
         return self.trace, self.trace_summary
 
