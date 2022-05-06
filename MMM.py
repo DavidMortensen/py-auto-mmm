@@ -40,46 +40,56 @@ class mmm:
 
         
 
-    def decomposition(self, data, holidays_file = "generated_holidays.csv", country_code = "DE"):
-        holidays = pd.read_csv(holidays_file, parse_dates = ["ds"])
-        holidays["begin_week"] = holidays["ds"].dt.to_period('W-SUN').dt.start_time
+    def decomposition(self, data, encode_holidays = False, encode_events = False, holidays_file = "generated_holidays.csv", country_code = "DE"):
+        if encode_holidays:
+            holidays = pd.read_csv(holidays_file, parse_dates = ["ds"])
+            holidays["begin_week"] = holidays["ds"].dt.to_period('W-SUN').dt.start_time
 
-        #combine same week holidays into one holiday
-        holidays_weekly = holidays.groupby(["begin_week", "country", "year"], as_index = False).agg({'holiday':'#'.join, 'country': 'first', 'year': 'first'}).rename(columns = {'begin_week': 'ds'})
-        holidays_weekly_de = holidays_weekly.query("(country == '{}')".format(country_code)).copy()
+            #combine same week holidays into one holiday
+            holidays_weekly = holidays.groupby(["begin_week", "country", "year"], as_index = False).agg({'holiday':'#'.join, 'country': 'first', 'year': 'first'}).rename(columns = {'begin_week': 'ds'})
+            holidays_weekly_de = holidays_weekly.query("(country == '{}')".format(country_code)).copy()
 
         prophet_data = data.rename(columns = {'revenue': 'y', 'date': 'ds'})
 
-        #add categorical into prophet
-        prophet_data = pd.concat([prophet_data, pd.get_dummies(prophet_data["events"], drop_first = True, prefix = "events")], axis = 1)
+        if encode_events:
+            prophet_data = pd.concat([prophet_data, pd.get_dummies(prophet_data["events"], drop_first = True, prefix = "events")], axis = 1)
 
-        self.prophet = Prophet(yearly_seasonality = True, holidays = holidays_weekly_de)
-        self.prophet.add_regressor(name = "events_event2")
-        self.prophet.add_regressor(name = "events_na")
+            self.prophet = Prophet(yearly_seasonality = True, holidays = holidays_weekly_de)
+            self.prophet.add_regressor(name = "events_event2")
+            self.prophet.add_regressor(name = "events_na")
 
-        self.prophet.fit(prophet_data[["ds", "y", "events_event2", "events_na"]])
-        self.prophet_predict = self.prophet.predict(prophet_data[["ds", "y", "events_event2", "events_na"]])
+            self.prophet.fit(prophet_data[["ds", "y", "events_event2", "events_na"]])
+            self.prophet_predict = self.prophet.predict(prophet_data[["ds", "y", "events_event2", "events_na"]])
 
-        prophet_columns = [col for col in self.prophet_predict.columns if (col.endswith("upper") == False) & (col.endswith("lower") == False)]
-        events_numeric = self.prophet_predict[prophet_columns].filter(like = "events_").sum(axis = 1)
+            prophet_columns = [col for col in self.prophet_predict.columns if (col.endswith("upper") == False) & (col.endswith("lower") == False)]
+            events_numeric = self.prophet_predict[prophet_columns].filter(like = "events_").sum(axis = 1)
+
+        else:
+            if encode_holidays:
+                self.prophet = Prophet(yearly_seasonality = True, holidays = holidays_weekly_de)
+            else:
+                self.prophet = Prophet(yearly_seasonality = True)
+            self.prophet.fit(prophet_data[["ds", "y"]])
+            self.prophet_predict = self.prophet.predict(prophet_data[["ds", "y"]])
+            
         final_data = data.copy()
         final_data["trend"] = self.prophet_predict["trend"]
         final_data["season"] = self.prophet_predict["yearly"]
-        final_data["holiday"] = self.prophet_predict["holidays"]
-        final_data["events"] = (events_numeric - np.min(events_numeric)).values
+
+        if encode_holidays:
+            final_data["holiday"] = self.prophet_predict["holidays"]
+
+        if encode_events:
+            final_data["events"] = (events_numeric - np.min(events_numeric)).values
 
         return final_data
 
     def plot_decomposition(self):
         self.prophet.plot_components(self.prophet_predict, figsize = (20, 10))
 
-    def estimate_spend_exposure(self, data):
-        spend_to_exposure_menten_func = lambda spend, V_max, K_m: V_max * spend / (K_m + spend)
-
+    def estimate_spend_exposure(self, data, media_exposures, media_spends):
         #define the function
         spend_to_exposure_menten_func = lambda spend, V_max, K_m: V_max * spend / (K_m + spend)
-        media_exposures = ["facebook_I", "search_clicks_P"]
-        media_spends = ["facebook_S", "search_S"]
         media_spend_exposure_df = pd.DataFrame()
 
         for (media_exposure, media_spend) in zip(media_exposures, media_spends):
@@ -142,7 +152,7 @@ class mmm:
         _ = ax.plot(prior_pred["outcome"].T, color = "0.5", alpha = 0.1)
         _ = ax.plot(data[self.target_variable].values[self.START_INDEX:self.END_INDEX], color = "red")
 
-    def fit(self, draws, tune, chains, cores, target_accept = 0.95, ):
+    def fit(self, draws, tune, chains, cores, target_accept = 0.95):
         with self.model:
             self.trace = pm.sample(draws, tune = tune, chains = chains, step = None, target_accept = target_accept, cores = cores, return_inferencedata = True)
             self.trace_summary = az.summary(self.trace)
