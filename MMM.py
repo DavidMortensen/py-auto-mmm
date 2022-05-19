@@ -233,7 +233,7 @@ class mmm:
 
         qs = mquantiles(100_000 * (self.ppc_all["outcome"]), [0.025, 0.975], axis=0)
         fig, ax = plt.subplots(figsize = (20, 8))
-        _ = ax.plot((self.ppc_all["outcome"].mean(axis = 0) * 100_000), color = "green", label = "predicted posterior sampling")
+        _ = ax.plot((self.ppc_all["outcome"].mean(axis = 0) * 100_000), color = "blue", label = "predicted posterior sampling")
         _ = ax.plot(y_true, 'ro', label = "true")
         _ = ax.plot(qs[0], '--', color = "grey", label = "2.5%", alpha = 0.5)
         _ = ax.plot(qs[1], '--', color = "grey", label = "97.5%", alpha = 0.5)
