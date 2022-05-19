@@ -1,4 +1,3 @@
-from pyexpat import model
 import pandas as pd
 import numpy as np
 
@@ -13,7 +12,6 @@ from scipy import optimize
 from plotnine import *
 from scipy.stats.mstats import mquantiles
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 class mmm:
 
@@ -231,18 +229,11 @@ class mmm:
 
     def plot_model_fit(self, data):
         data["prediction"] = data[self.delay_channels + self.control_variables + ["intercept"]].sum(axis = 1)
-        y_pred_decomposed = data["prediction"].values[self.START_INDEX:self.END_INDEX] * 100_000
         y_true = self.y_true[self.START_INDEX:self.END_INDEX]
 
-        print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred_decomposed) ** 2))}")
-        print(f"MAPE: {np.mean(np.abs((y_true - y_pred_decomposed) / y_true))}")
-        print(f"NRMSE: {self._nrmse(y_true, y_pred_decomposed)}")
-
         qs = mquantiles(100_000 * (self.ppc_all["outcome"]), [0.025, 0.975], axis=0)
-        qs_decomposed = mquantiles(100_000 * (self.ppc_all["outcome"]), [0.025, 0.975], axis=0)
         fig, ax = plt.subplots(figsize = (20, 8))
         _ = ax.plot((self.ppc_all["outcome"].mean(axis = 0) * 100_000), color = "green", label = "predicted posterior sampling")
-        _ = ax.plot(y_pred_decomposed, color = "blue", label = "predicted decomposition")
         _ = ax.plot(y_true, 'ro', label = "true")
         _ = ax.plot(qs[0], '--', color = "grey", label = "2.5%", alpha = 0.5)
         _ = ax.plot(qs[1], '--', color = "grey", label = "97.5%", alpha = 0.5)
