@@ -6,34 +6,29 @@ output: html_notebook
 
 ```{r}
 library(amss)
-
 n.years <- 4
-time.n <- 207
-
+time.n <- 208
 activity.transition <- matrix(
 c(0.60, 0.30, 0.10, # migration originating from inactive state
-0.60, 0.30, 0.10, # exploratory state
-0.60, 0.30, 0.10), # purchase state
+0.30, 0.60, 0.10, # exploratory state
+0.10, 0.30, 0.60), # purchase state
 nrow = length(kActivityStates), byrow = TRUE)
 favorability.transition <- matrix(
 c(0.03, 0.07, 0.65, 0.20, 0.05, # migration from the unaware state
-0.03, 0.07, 0.65, 0.20, 0.05, # negative state
-0.03, 0.07, 0.65, 0.20, 0.05, # neutral state
-0.03, 0.07, 0.65, 0.20, 0.05, # somewhat favorable state
-0.03, 0.07, 0.65, 0.20, 0.05), # favorable state
+0.03, 0.05, 0.60, 0.25, 0.07, # negative state
+0.02, 0.04, 0.60, 0.26, 0.06, # neutral state
+0.02, 0.03, 0.50, 0.30, 0.15, # somewhat favorable state
+0.01, 0.03, 0.45, 0.35, 0.20), # favorable state
 nrow = length(kFavorabilityStates), byrow = TRUE)
-
 # a sinusoidal pattern
 market.rate.nonoise <-
 SimulateSinusoidal(n.years * 52, 52,
-vert.trans = 0.8, amplitude = 0.10)
+vert.trans = 0.8, amplitude = 0.5)
 # with some added noise
 market.rate.seas <- pmax(
-1, pmin(1,
+0, pmin(1,
 market.rate.nonoise *
 SimulateAR1(length(market.rate.nonoise), 1, 0.1, 0.3)))
-
-
 nat.mig.params <- list(
 population = 5000000,
 market.rate.trend = 1,
@@ -47,9 +42,7 @@ prop.loyalty = c(1, 0, 0),
 transition.matrices = list(
 activity = activity.transition,
 favorability = favorability.transition))
-
 budget.index <- rep(1:n.years, each = 52)
-
 ```
 
 ```{r}
@@ -58,7 +51,6 @@ tv.flighting <-
     market.rate.seas +
     SimulateAR1(length(market.rate.seas), -0.7, 0.7, -0.7))
 tv.flighting <- tv.flighting[c(6:length(tv.flighting), 1:5)]
-
 tv.activity.trans.mat <- matrix(
 c(1.00, 0.00, 0.00, # migration originating from the inactive state
 0.00, 1.00, 0.00, # exploratory state
@@ -71,7 +63,6 @@ c(0.4, 0.0, 0.4, 0.2, 0.0, # migration from the unaware state
 0.0, 0.0, 0.0, 0.8, 0.2, # somewhat favorable state
 0.0, 0.0, 0.0, 0.0, 1.0), # favorable state
 nrow = length(kFavorabilityStates), byrow = TRUE)
-
 params.tv <- list(
 audience.membership = list(activity = rep(0.4, 3)),
 budget = rep((23156158/n.years),n.years),
@@ -91,8 +82,6 @@ ooh.flighting <-
     market.rate.seas +
     SimulateAR1(length(market.rate.seas), -0.7, 0.7, -0.7))
 ooh.flighting <- ooh.flighting[c(6:length(ooh.flighting), 1:5)]
-
-
 ooh.activity.trans.mat <- matrix(
 c(1.00, 0.00, 0.00, # migration originating from the inactive state
 0.00, 1.00, 0.00, # exploratory state
@@ -105,8 +94,6 @@ c(0.4, 0.0, 0.4, 0.2, 0.0, # migration from the unaware state
 0.0, 0.0, 0.0, 0.8, 0.2, # somewhat favorable state
 0.0, 0.0, 0.0, 0.0, 1.0), # favorable state
 nrow = length(kFavorabilityStates), byrow = TRUE)
-
-
 params.ooh <- list(
 audience.membership = list(activity = rep(0.4, 3)),
 budget = rep((16854997/n.years),n.years),
@@ -118,7 +105,6 @@ hill.slope = 1,
 transition.matrices = list(
 activity = ooh.activity.trans.mat,
 favorability = ooh.favorability.trans.mat))
-
 ```
 
 
@@ -129,8 +115,6 @@ print.flighting <-
     market.rate.seas +
     SimulateAR1(length( market.rate.seas), -0.7, 0.7, -0.7))
 radio.flighting <- print.flighting[c(6:length(print.flighting), 1:5)]
-
-
 print.activity.trans.mat <- matrix(
 c(1.00, 0.00, 0.00, # migration originating from the inactive state
 0.00, 1.00, 0.00, # exploratory state
@@ -143,8 +127,6 @@ c(0.4, 0.0, 0.4, 0.2, 0.0, # migration from the unaware state
 0.0, 0.0, 0.0, 0.8, 0.2, # somewhat favorable state
 0.0, 0.0, 0.0, 0.0, 1.0), # favorable state
 nrow = length(kFavorabilityStates), byrow = TRUE)
-
-
 params.print <- list(
 audience.membership = list(activity = rep(0.4, 3)),
 budget = rep((5816666/n.years),n.years),
@@ -156,12 +138,41 @@ hill.slope = 1,
 transition.matrices = list(
 activity = print.activity.trans.mat,
 favorability = print.favorability.trans.mat))
+```
 
+```{r}
+newsletter.flighting <-
+  pmax(0,
+    market.rate.seas +
+    SimulateAR1(length( market.rate.seas), -0.7, 0.7, -0.7))
+radio.flighting <- newsletter.flighting[c(6:length(newsletter.flighting), 1:5)]
+newsletter.activity.trans.mat <- matrix(
+c(1.00, 0.00, 0.00, # migration originating from the inactive state
+0.00, 1.00, 0.00, # exploratory state
+0.00, 0.00, 1.00), # purchase state
+nrow = length(kActivityStates), byrow = TRUE)
+newsletter.favorability.trans.mat <- matrix(
+c(0.4, 0.0, 0.4, 0.2, 0.0, # migration from the unaware state
+0.0, 0.9, 0.1, 0.0, 0.0, # negative state
+0.0, 0.0, 0.6, 0.4, 0.0, # neutral state
+0.0, 0.0, 0.0, 0.8, 0.2, # somewhat favorable state
+0.0, 0.0, 0.0, 0.0, 1.0), # favorable state
+nrow = length(kFavorabilityStates), byrow = TRUE)
+params.newsletter <- list(
+audience.membership = list(activity = rep(0.4, 3)),
+budget = rep((5816666/n.years),n.years),
+budget.index = budget.index,
+flighting = newsletter.flighting,
+unit.cost = 0.005,
+hill.ec = 1.56,
+hill.slope = 1,
+transition.matrices = list(
+activity = newsletter.activity.trans.mat,
+favorability = newsletter.favorability.trans.mat))
 ```
 ```{r}
 cpc.min <- 0.8
 cpc.max <- 1.1
-
 # uncapped spend, shut off the first 2 of every 13 weeks
 spend.cap.fn <- function(time.index, budget, budget.index) {
   if ((time.index %% 13) > 1) {
@@ -170,16 +181,12 @@ spend.cap.fn <- function(time.index, budget, budget.index) {
     return(0)
   }
 }
-
 bid.fn <- function(time.index, per.capita.budget, budget.index) {
     return(1.1)
 }
-
-
 kwl.fn <- function(time.index, per.capita.budget, budget.index) {
     return(per.capita.budget)
 }
-
 facebook.activity.trans.mat <- matrix(
 c(0.05, 0.95, 0.00, # starting state: inactive
 0.00, 0.85, 0.15, # starting state: exploratory
@@ -192,7 +199,6 @@ c(1.0, 0.0, 0.0, 0.0, 0.0, # unaware
 0.0, 0.0, 0.0, 1.0, 0.0, # favorable
 0.0, 0.0, 0.0, 0.0, 1.0), # loyal
 nrow = length(kFavorabilityStates), byrow = TRUE)
-
 params.facebook <- list(
   audience.membership = list(activity = c(0.01, 0.3, 0.4)),
   budget = rep((13388904/n.years),n.years),
@@ -208,12 +214,10 @@ params.facebook <- list(
   transition.matrices = list(
   activity = facebook.activity.trans.mat,
   favorability = facebook.favorability.trans.mat))
-
 ```
 ```{r}
 cpc.min <- 0.8
 cpc.max <- 1.1
-
 # uncapped spend, shut off the first 2 of every 13 weeks
 spend.cap.fn <- function(time.index, budget, budget.index) {
   if ((time.index %% 13) > 1) {
@@ -222,16 +226,12 @@ spend.cap.fn <- function(time.index, budget, budget.index) {
     return(0)
   }
 }
-
 bid.fn <- function(time.index, per.capita.budget, budget.index) {
     return(1.1)
 }
-
-
 kwl.fn <- function(time.index, per.capita.budget, budget.index) {
     return(per.capita.budget)
 }
-
 search.activity.trans.mat <- matrix(
 c(0.05, 0.95, 0.00, # starting state: inactive
 0.00, 0.85, 0.15, # starting state: exploratory
@@ -244,7 +244,6 @@ c(1.0, 0.0, 0.0, 0.0, 0.0, # unaware
 0.0, 0.0, 0.0, 1.0, 0.0, # favorable
 0.0, 0.0, 0.0, 0.0, 1.0), # loyal
 nrow = length(kFavorabilityStates), byrow = TRUE)
-
 params.search <- list(
   audience.membership = list(activity = c(0.01, 0.3, 0.4)),
   budget = rep((9228200 /n.years),n.years),
@@ -260,7 +259,6 @@ params.search <- list(
   transition.matrices = list(
   activity = search.activity.trans.mat,
   favorability = search.favorability.trans.mat))
-
 ```
 ```{r}
 sales.params <- list(
@@ -275,17 +273,17 @@ sales.params <- list(
 sim.data <- SimulateAMSS(
   time.n = time.n,
   nat.mig.params = nat.mig.params,
-  media.names = c("tv","ooh","print","facebook","search"),
+  media.names = c("tv","ooh","print","newsletter","facebook","search"),
   media.modules = c(
+    `DefaultTraditionalMediaModule`,
     `DefaultTraditionalMediaModule`,
     `DefaultTraditionalMediaModule`,
     `DefaultTraditionalMediaModule`,
     `DefaultSearchMediaModule`,
     `DefaultSearchMediaModule`),
-  media.params = list(params.tv ,params.ooh,params.print ,params.facebook,params.search),
+  media.params = list(params.tv ,params.ooh,params.print, params.newsletter,params.facebook,params.search),
   sales.params = sales.params)
 ```
 ```{r}
 write.csv(sim.data[['data']], file = "sales_amss.csv")
 ```
-
