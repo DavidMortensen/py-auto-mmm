@@ -124,7 +124,7 @@ class mmm:
                 x_new_sliced = x_new[self.START_INDEX:self.END_INDEX]
                 saturation_tensor = self._hill_saturation(x_new_sliced, saturation_alpha, saturation_gamma)
                 
-                channel_b = pm.HalfNormal(f"{channel_name}_media_coef", sd = 3)
+                channel_b = pm.HalfNormal(f"{channel_name}_media_coef", sd = 0.1)
                 response_mean.append(saturation_tensor * channel_b)
                 
             for control_var in self.control_variables:
@@ -132,13 +132,13 @@ class mmm:
                 
                 x = data[control_var].values[self.START_INDEX:self.END_INDEX]
                 
-                control_beta = pm.Normal(f"{control_var}_control_coef", sd = 3)
+                control_beta = pm.Normal(f"{control_var}_control_coef", 0.1, sd = 0.1)
                 control_x = control_beta * x
                 response_mean.append(control_x)
                 
-            intercept = pm.Normal("intercept", np.mean(data[target_variable].values), sd = 3)
+            intercept = pm.HalfNormal("intercept", 0.1)
                 
-            sigma = pm.HalfNormal("sigma", 4)
+            sigma = pm.HalfNormal("sigma", 0.15)
             
             likelihood = pm.Normal("outcome", mu = intercept + sum(response_mean), sd = sigma, observed = data[target_variable].values[self.START_INDEX:self.END_INDEX])
 
@@ -186,7 +186,7 @@ class mmm:
         y_true = self.y_true[self.START_INDEX:self.END_INDEX]
         y_pred = self.ppc_all["outcome"].mean(axis = 0) * 100_000
 
-        print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred)**2))}")
+        print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred) ** 2))}")
         print(f"MAPE: {np.mean(np.abs((y_true - y_pred) / y_true))}")
         print(f"NRMSE: {self._nrmse(y_true, y_pred)}")
 
