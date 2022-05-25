@@ -158,7 +158,7 @@ class mmm:
 
     def predict(self, data, START_INDEX, END_INDEX, return_metrics = True):
         data["prediction"] = data[self.delay_channels + self.control_variables + ["intercept"]].sum(axis = 1)
-        y_pred = data["prediction"].values[START_INDEX:END_INDEX] * 100_000
+        y_pred = data["prediction"].values[START_INDEX:END_INDEX]
         
         if return_metrics == True:
             y_true = self.y_true[START_INDEX:END_INDEX]
@@ -184,7 +184,7 @@ class mmm:
 
         self.y_true = data[self.target_variable].values
         y_true = self.y_true[self.START_INDEX:self.END_INDEX]
-        y_pred = self.ppc_all["outcome"].mean(axis = 0) * 100_000
+        y_pred = self.ppc_all["outcome"].mean(axis = 0)
 
         print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred) ** 2))}")
         print(f"MAPE: {np.mean(np.abs((y_true - y_pred) / y_true))}")
@@ -231,9 +231,9 @@ class mmm:
         data["prediction"] = data[self.delay_channels + self.control_variables + ["intercept"]].sum(axis = 1)
         y_true = self.y_true[self.START_INDEX:self.END_INDEX]
 
-        qs = mquantiles(100_000 * (self.ppc_all["outcome"]), [0.025, 0.975], axis=0)
+        qs = mquantiles(self.ppc_all["outcome"], [0.025, 0.975], axis=0)
         fig, ax = plt.subplots(figsize = (20, 8))
-        _ = ax.plot((self.ppc_all["outcome"].mean(axis = 0) * 100_000), color = "blue", label = "predicted posterior sampling")
+        _ = ax.plot((self.ppc_all["outcome"].mean(axis = 0)), color = "blue", label = "predicted posterior sampling")
         _ = ax.plot(y_true, 'ro', label = "true")
         _ = ax.plot(qs[0], '--', color = "grey", label = "2.5%", alpha = 0.5)
         _ = ax.plot(qs[1], '--', color = "grey", label = "97.5%", alpha = 0.5)
