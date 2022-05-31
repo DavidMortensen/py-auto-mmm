@@ -12,6 +12,7 @@ from scipy import optimize
 from plotnine import *
 from scipy.stats.mstats import mquantiles
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
 
 class mmm:
 
@@ -35,6 +36,7 @@ class mmm:
         self.prophet_predict = None
         self.ppc_all = None
         self.y_true = None
+        self.revenue_transformation = None
 
         
 
@@ -86,7 +88,9 @@ class mmm:
         self.prophet.plot_components(self.prophet_predict, figsize = (20, 10))
 
     def estimate_spend_exposure(self, data, media_exposures, media_spends):
-        #define the function
+
+        #We use the menten function as proposed by https://towardsdatascience.com/modeling-marketing-mix-using-pymc3-ba18dd9e6e68
+        
         spend_to_exposure_menten_func = lambda spend, V_max, K_m: V_max * spend / (K_m + spend)
         media_spend_exposure_df = pd.DataFrame()
 
@@ -100,7 +104,7 @@ class mmm:
             
         return media_spend_exposure_df
 
-    def initialize(self, data, delay_channels, media_channels, control_variables, target_variable, START_INDEX, END_INDEX):
+    def initialize(self, data, delay_channels, media_channels, control_variables, target_variable, revenue_transformation, START_INDEX, END_INDEX):
 
         self.delay_channels = delay_channels
         self.control_variables = control_variables
@@ -108,6 +112,11 @@ class mmm:
         self.media_channels = media_channels
         self.START_INDEX = START_INDEX
         self.END_INDEX = END_INDEX
+        self.revenue_transformation = revenue_transformation
+
+        #The backbone of the model is inspired from: 
+        #https://www.youtube.com/watch?time_continue=994&v=UznM_-_760Y&feature=emb_title
+        #It's relatively standard but more simple then our first version. 
 
         response_mean = []
         with pm.Model() as self.model:
@@ -158,7 +167,7 @@ class mmm:
 
     def predict(self, data, START_INDEX, END_INDEX, return_metrics = True):
         data["prediction"] = data[self.delay_channels + self.control_variables + ["intercept"]].sum(axis = 1)
-        y_pred = data["prediction"].values[START_INDEX:END_INDEX]
+        y_pred = self.revenue_transformation.inverse_transform(data["prediction"].values.reshape(-1,1))[START_INDEX:END_INDEX].reshape(-1)
         
         if return_metrics == True:
             y_true = self.y_true[START_INDEX:END_INDEX]
@@ -184,7 +193,7 @@ class mmm:
 
         self.y_true = data[self.target_variable].values
         y_true = self.y_true[self.START_INDEX:self.END_INDEX]
-        y_pred = self.ppc_all["outcome"].mean(axis = 0)
+        y_pred = self.revenue_transformation.inverse_transform(self.ppc_all["outcome"].mean(axis = 0).reshape(-1, 1)).reshape(-1)
 
         print(f"RMSE: {np.sqrt(np.mean((y_true - y_pred) ** 2))}")
         print(f"MAPE: {np.mean(np.abs((y_true - y_pred) / y_true))}")
@@ -231,9 +240,9 @@ class mmm:
         data["prediction"] = data[self.delay_channels + self.control_variables + ["intercept"]].sum(axis = 1)
         y_true = self.y_true[self.START_INDEX:self.END_INDEX]
 
-        qs = mquantiles(self.ppc_all["outcome"], [0.025, 0.975], axis=0)
+        qs = mquantiles(self.revenue_transformation.inverse_transform(self.ppc_all["outcome"]), [0.025, 0.975], axis=0)
         fig, ax = plt.subplots(figsize = (20, 8))
-        _ = ax.plot((self.ppc_all["outcome"].mean(axis = 0)), color = "blue", label = "predicted posterior sampling")
+        _ = ax.plot(self.revenue_transformation.inverse_transform(self.ppc_all["outcome"].mean(axis = 0).reshape(-1, 1)), color = "blue", label = "predicted posterior sampling")
         _ = ax.plot(y_true, 'ro', label = "true")
         _ = ax.plot(qs[0], '--', color = "grey", label = "2.5%", alpha = 0.5)
         _ = ax.plot(qs[1], '--', color = "grey", label = "97.5%", alpha = 0.5)
@@ -243,12 +252,10 @@ class mmm:
 
         exposure_to_spend_menten_func = lambda exposure, V_max, K_m: exposure * K_m / (V_max - exposure)
 
-        #Compute Spend
         spend_df = pd.DataFrame()
         for media_channel in self.media_channels:
             temp_series = data[media_channel].iloc[self.START_INDEX:self.END_INDEX].values
             
-            #exposure to spend should
             if len(media_spend_exposure_df[media_spend_exposure_df.exposure == media_channel]) > 0:
                 vmax = media_spend_exposure_df[media_spend_exposure_df.exposure == media_channel]["V_max"].iloc[0]
                 km = media_spend_exposure_df[media_spend_exposure_df.exposure == media_channel]["K_m"].iloc[0]
@@ -262,7 +269,6 @@ class mmm:
 
         spend_df["spend_share"] = spend_df["total_spend"] / spend_df["total_spend"].sum()
 
-        #Compute Response
         response_df = pd.DataFrame()
         for media_channel in self.media_channels:
             response = data_transformed_decomposed[media_channel].iloc[self.START_INDEX:self.END_INDEX].values
@@ -276,21 +282,6 @@ class mmm:
         return spend_response_share_df
 
     def plot_spend_vs_effect_share(self, spend_response_share_df):
-            """Spend vs Effect Share plot
-
-            Args:
-                decomp_spend (pd.DataFrame): Data with media decompositions. The following columns should be present: media, spend_share, effect_share per media variable
-                figure_size (tuple, optional): Figure size. Defaults to (15, 10).
-
-            Example:
-                decomp_spend:
-                media         spend_share effect_share
-                tv_S           0.31        0.44
-                ooh_S          0.23        0.34
-            
-            Returns:
-                [plotnine]: plotnine plot
-            """
             
             plot_spend_effect_share = spend_response_share_df.melt(id_vars = ["media"], value_vars = ["spend_share", "effect_share"])
 
@@ -307,6 +298,8 @@ class mmm:
             return plt
 
     def _geometric_adstock_pymc(self, x, theta):
+        #we use the function from https://towardsdatascience.com/modeling-marketing-mix-using-pymc3-ba18dd9e6e68
+        #As the theano version of adstock is not straight forward. 
         x = tt.as_tensor_variable(x)
         
         def adstock_geometric_recurrence_theano(index, 
